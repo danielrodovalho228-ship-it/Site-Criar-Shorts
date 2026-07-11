@@ -50,6 +50,22 @@ uvicorn main:app --reload --port 8000
 
 Docs interativas: http://localhost:8000/docs
 
+## Rodar o frontend (Sprint 2)
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173 (proxia /api -> :8000)
+```
+
+Wizard de 4 passos (Upload → Configurar → Preview → Gerar): seletor de
+template, dropzones com thumbnails/player/preview de SRT, tabela de cenas com
+reordenação por drag (dnd-kit), auto-timing por nome (M_SS) + distribuir,
+painel de hook/CTA/música/SFX/legendas/caption_fixes, barra de cobertura,
+timeline proporcional com marcadores, e geração com progresso + player +
+download + duplicar. Stack: React + TS + Vite + Tailwind v4 + Zustand + dnd-kit
++ react-dropzone. Backend precisa estar rodando na :8000.
+
 ## Rotas (Sprint 1)
 
 | Método | Rota | Descrição |

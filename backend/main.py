@@ -267,6 +267,17 @@ def get_job(job_id: str) -> Job:
     return job
 
 
+@app.get("/api/projects/{project_id}/uploads/{filename}")
+def serve_upload(project_id: str, filename: str) -> FileResponse:
+    """Serve an uploaded asset (thumbnails / audio player in the frontend)."""
+    _require_project(project_id)
+    safe = Path(filename).name  # block traversal
+    path = storage.uploads_dir(project_id) / safe
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return FileResponse(path)
+
+
 @app.get("/api/projects/{project_id}/download")
 def download(project_id: str) -> FileResponse:
     project = _require_project(project_id)
