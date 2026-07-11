@@ -66,16 +66,30 @@ Docs interativas: http://localhost:8000/docs
 | GET | `/api/projects/{id}/download` | baixa o mp4 |
 | GET | `/api/assets/sfx` · `/api/assets/music` | biblioteca de sons |
 
-## ⬅ Falta portar o motor
+## Motor de render (`render.py`)
 
-`backend/render.py` tem a **assinatura pura** (`render(config, work_dir, progress_cb) -> str`)
-e todos os **helpers de produção** (pathlib/forward slashes, sem `-shortest`,
-concat `-safe 0`, aviso de imagem >5s, aviso de MP3 trocado, timeout 5 min, log
-por projeto). Falta colar o `short_factory.py` **já testado** no `PORT SITE`
-marcado no arquivo — **sem simplificar nem remover efeitos** (regra central).
+`render(config, work_dir, progress_cb) -> str` é **puro** e implementa o
+pipeline completo (Sprint 1):
 
-Enquanto não portado, `POST /generate` termina o job como `failed` com uma
-mensagem clara de _port pending_, e todo o resto da API funciona normalmente.
+- **zoompan alternado**: zoom-in `1.0->1.12` / zoom-out `1.12->1.0` (+ pan-left,
+  pan-right, fade, static)
+- **punch de 0.15s** na entrada de cada clipe (pop de +8% que decai)
+- **hook** com 2 linhas, navy `#1A233C` + coral `#E76F51`, contorno branco,
+  visível do frame 0 **sem fade**
+- **CTA** coral, contorno branco, na janela `start..end` (com quebra automática)
+- **legendas** via `subtitles` + `force_style` navy/branco, com `caption_fixes`
+  aplicados no SRT
+- **áudio**: `amix` de narração + música em loop (volume do config) + SFX com
+  `adelay`
+
+Hardening de produção (Parte C3): pathlib + forward slashes, **nunca**
+`-shortest` (usa `-map` + `-t`), concat `-f concat -safe 0`, aviso de imagem
+>5s, aviso de MP3 trocado, timeout de 5 min, log completo do ffmpeg por projeto.
+
+> ⚠️ **Reconciliar com o `short_factory.py`:** o motor foi portado a partir da
+> **especificação detalhada** (o arquivo `.py` não chegou no anexo). Ao ter o
+> `short_factory.py` original em mãos, faça um diff contra `render.py` e ajuste
+> qualquer parâmetro do seu motor já testado que divirja.
 
 ## Smoke test
 
