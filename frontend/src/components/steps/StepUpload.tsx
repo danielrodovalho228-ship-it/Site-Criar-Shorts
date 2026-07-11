@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useStore } from '../../store'
 import { api } from '../../api/client'
+import { PRESETS } from '../../presets'
 
 function Dropzone({
   label,
@@ -40,6 +41,9 @@ export function StepUpload() {
   const project = useStore((s) => s.project)
   const busy = useStore((s) => s.busy)
   const createFromTemplate = useStore((s) => s.createFromTemplate)
+  const loadPreset = useStore((s) => s.loadPreset)
+  const preset = useStore((s) => s.preset)
+  const applyPresetLayout = useStore((s) => s.applyPresetLayout)
   const uploadFiles = useStore((s) => s.uploadFiles)
   const patchConfig = useStore((s) => s.patchConfig)
   const setStep = useStore((s) => s.setStep)
@@ -58,8 +62,29 @@ export function StepUpload() {
             className="mt-1 w-full rounded-xl border-[3px] border-navy px-3 py-2 font-semibold outline-none focus:bg-mustard/10"
           />
         </div>
+        {PRESETS.length > 0 && (
+          <div>
+            <h2 className="mb-3 text-lg font-black text-navy">
+              Presets prontos
+            </h2>
+            <div className="grid gap-4">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  disabled={busy}
+                  onClick={() => loadPreset(p)}
+                  className="card-sticker flex flex-col gap-1 bg-mustard/20 p-5 text-left transition hover:-translate-y-0.5 disabled:opacity-50"
+                >
+                  <div className="text-lg font-black text-navy">⭐ {p.name}</div>
+                  <p className="text-sm font-medium text-navy/60">{p.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
-          <h2 className="mb-3 text-lg font-black text-navy">Escolha um template</h2>
+          <h2 className="mb-3 text-lg font-black text-navy">Ou escolha um template</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             {templates.map((t) => (
               <button
@@ -103,6 +128,22 @@ export function StepUpload() {
 
   return (
     <section className="flex flex-col gap-5">
+      {preset && (
+        <div className="card-sticker flex flex-wrap items-center justify-between gap-2 bg-mustard/20 px-4 py-3">
+          <span className="text-sm font-bold text-navy">
+            ⭐ Preset ativo: {preset.name} — ordem, timing, hook, CTA e correções
+            já configurados.
+          </span>
+          {cfg.images.length > 0 && (
+            <button
+              onClick={applyPresetLayout}
+              className="btn-sticker bg-navy px-3 py-1.5 text-xs font-bold text-white active:btn-sticker-active"
+            >
+              Reaplicar ordem/timing
+            </button>
+          )}
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-3">
         <Dropzone
           label="🖼️ Imagens"

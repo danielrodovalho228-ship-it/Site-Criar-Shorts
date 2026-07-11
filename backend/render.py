@@ -34,6 +34,8 @@ from typing import Callable, List, Optional
 # Output spec — vertical short.
 WIDTH, HEIGHT = 1080, 1920
 FPS = 30
+# Upscale antes do zoompan (anti-jitter do zoom — motor original).
+WORK_WIDTH = 1400
 
 # Production guardrails (Part C3).
 MAX_IMAGE_SECONDS = 5.0     # nenhuma imagem parada > 5s sem aviso
@@ -204,10 +206,12 @@ def _render_clip(image_path: str, duration: float, effect: str, out_path: Path,
                  log_path: Path) -> None:
     z, x, y = _zoompan_expr(effect, duration)
     n_frames = max(2, int(round(duration * FPS)))
-    # cover-fill to exactly 1080x1920, then zoompan (z=1.0 => full frame).
+    # 1) cover-fill p/ 9:16, 2) UPSCALE (scale=1400:-1) antes do zoompan
+    # (anti-jitter do zoom — motor original), 3) zoompan com fps=30 dentro.
     vf = (
         f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
         f"crop={WIDTH}:{HEIGHT},"
+        f"scale={WORK_WIDTH}:-1,"
         f"zoompan=z='{z}':x='{x}':y='{y}':d=1:s={WIDTH}x{HEIGHT}:fps={FPS}"
     )
     if effect == "fade":

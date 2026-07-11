@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { api } from './api/client'
+import { fileToken, type Preset } from './presets'
 import type {
   AssetInfo,
   CaptionStyle,
@@ -21,6 +22,7 @@ interface State {
   job: Job | null
   busy: boolean
   toasts: Toast[]
+  preset: Preset | null
 
   init: () => Promise<void>
   toast: (kind: Toast['kind'], msg: string) => void
@@ -28,6 +30,8 @@ interface State {
   setStep: (s: number) => void
 
   createFromTemplate: (templateId: string, name: string) => Promise<void>
+  loadPreset: (preset: Preset) => Promise<void>
+  applyPresetLayout: () => void
   uploadFiles: (files: { images?: File[]; audio?: File; srt?: File }) => Promise<void>
 
   patchConfig: (fn: (c: ProjectConfig) => void) => void
@@ -61,6 +65,7 @@ export const useStore = create<State>((set, get) => ({
   job: null,
   busy: false,
   toasts: [],
+  preset: null,
 
   init: async () => {
     try {
@@ -95,6 +100,64 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  loadPreset: async (preset) => {
+    set({ busy: true })
+    try {
+      const project = await api.createProject({
+        template_id: preset.template_id,
+        name: preset.name,
+      })
+      set({ project, preset })
+      get().patchConfig((c) => {
+        c.hook = { text: preset.hook.text, duration: preset.hook.duration }
+        c.cta = { ...preset.cta }
+        c.caption_fixes = { ...preset.caption_fixes }
+        c.caption_style = preset.caption_style
+      })
+      await get().saveConfig()
+      get().toast(
+        'info',
+        `Preset "${preset.name}" carregado. Suba as imagens (nomes M_SS), o MP3 e o SRT.`,
+      )
+    } catch (e) {
+      get().toast('error', `Falha ao carregar preset: ${(e as Error).message}`)
+    } finally {
+      set({ busy: false })
+    }
+  },
+
+  applyPresetLayout: () => {
+    const { preset, project } = get()
+    if (!preset || !project || project.config.images.length === 0) return
+    const byToken = new Map<string, ImageClip>()
+    project.config.images.forEach((im) => {
+      const t = fileToken(im.file)
+      if (t) byToken.set(t, im)
+    })
+    const ordered: ImageClip[] = []
+    const used = new Set<string>()
+    const missing: string[] = []
+    preset.images.forEach((pi) => {
+      const im = byToken.get(pi.token)
+      if (im) {
+        ordered.push({ ...im, start: pi.start, effect: pi.effect })
+        used.add(im.file)
+      } else {
+        missing.push(pi.token)
+      }
+    })
+    // keep any uploaded images not covered by the preset, appended in order
+    project.config.images.forEach((im) => {
+      if (!used.has(im.file)) ordered.push(im)
+    })
+    get().patchConfig((c) => void (c.images = ordered))
+    if (missing.length) {
+      get().toast('info', `Preset aplicado. Faltam imagens: ${missing.join(', ')}.`)
+    } else {
+      get().toast('success', 'Preset aplicado às imagens (ordem + timing).')
+    }
+  },
+
   uploadFiles: async (files) => {
     const { project } = get()
     if (!project) return
@@ -103,6 +166,12 @@ export const useStore = create<State>((set, get) => ({
       const updated = await api.upload(project.id, files)
       set({ project: updated })
       get().toast('success', 'Arquivos enviados.')
+      // if a preset is active and images were sent, snap ordering + timing
+      // and PERSIST it, so later uploads don't clobber the reorder.
+      if (get().preset && files.images?.length) {
+        get().applyPresetLayout()
+        await get().saveConfig()
+      }
     } catch (e) {
       get().toast('error', `Falha no upload: ${(e as Error).message}`)
     } finally {
@@ -215,5 +284,5 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  reset: () => set({ project: null, job: null, step: 0 }),
+  reset: () => set({ project: null, job: null, step: 0, preset: null }),
 }))

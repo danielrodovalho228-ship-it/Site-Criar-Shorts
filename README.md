@@ -1,5 +1,9 @@
 # 🏭 Short Factory
 
+> 👉 **Só quer rodar o app no Windows e produzir Shorts?** Veja o
+> **[QUICKSTART.md](QUICKSTART.md)** (à prova de leigo: 2 duplo-cliques).
+
+
 Fábrica de **Shorts verticais (1080×1920)** para YouTube / Reels / TikTok.
 
 Filosofia (do plano master): **BYO assets + montagem perfeita**. O criador traz
