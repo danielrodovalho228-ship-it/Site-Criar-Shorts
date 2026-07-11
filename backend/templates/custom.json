@@ -1,0 +1,18 @@
+{
+  "id": "custom",
+  "name": "🎬 Custom",
+  "description": "Tudo manual — o MVP atual. Comece do zero e monte cada detalhe.",
+  "niche": "Avançado",
+  "recipe": "Sem receita pré-definida: você controla cortes, efeitos, hook, CTA, música e SFX.",
+  "cut_range": null,
+  "config": {
+    "hook": { "text": "", "duration": 2.5 },
+    "cta": { "text": "", "start": 0.0, "end": 0.0 },
+    "music": { "file": null, "volume": 0.2 },
+    "caption_style": "navy-white",
+    "images": [],
+    "sfx": [],
+    "caption_fixes": {}
+  },
+  "suggested_sfx": []
+}

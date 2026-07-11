@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Storage (user uploads + renders + generated project.json) — never commit
+/storage/projects/
+/storage/assets/sfx/*
+/storage/assets/music/*
+!/storage/assets/sfx/.gitkeep
+!/storage/assets/music/.gitkeep
+
+# ffmpeg logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Node (Sprint 2 frontend)
+node_modules/
+dist/
