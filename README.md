@@ -2,6 +2,10 @@
 
 > 👉 **Só quer rodar o app no Windows e produzir Shorts?** Veja o
 > **[QUICKSTART.md](QUICKSTART.md)** (à prova de leigo: 2 duplo-cliques).
+>
+> 🚀 **Quer acessar por uma URL pública (deploy)?** Veja o
+> **[DEPLOY.md](DEPLOY.md)** — imagem Docker única (site + API + ffmpeg),
+> deploy no Render/Railway/VPS.
 
 
 Fábrica de **Shorts verticais (1080×1920)** para YouTube / Reels / TikTok.

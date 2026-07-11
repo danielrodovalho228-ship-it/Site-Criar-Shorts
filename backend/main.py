@@ -315,3 +315,15 @@ def list_sfx() -> List[AssetInfo]:
 @app.get("/api/assets/music", response_model=List[AssetInfo])
 def list_music() -> List[AssetInfo]:
     return _list_assets("music")
+
+
+# --------------------------------------------------------------------------- #
+# Serve the built frontend (produção: uma URL só serve site + API).
+# Em dev, o Vite roda separado (:5173) e este mount nem existe (sem dist).
+# Registrado por ÚLTIMO para não sombrear as rotas /api/*.
+# --------------------------------------------------------------------------- #
+_frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _frontend_dist.exists():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

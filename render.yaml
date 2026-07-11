@@ -1,0 +1,19 @@
+# Render Blueprint — deploy "quase 1 clique".
+# No Render: New + -> Blueprint -> conecta este repo -> Apply.
+# Ele lê este arquivo, builda o Dockerfile e te dá uma URL pública.
+services:
+  - type: web
+    name: short-factory
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    branch: claude/shorts-creation-site-1hgmiy
+    healthCheckPath: /api/health
+    autoDeploy: true
+    # Disco persistente é opcional (plano free nao suporta). Sem ele, os
+    # uploads/renders somem quando o serviço reinicia -- ok para TESTE.
+    # Para persistir (planos pagos), descomente:
+    # disk:
+    #   name: storage
+    #   mountPath: /app/storage
+    #   sizeGB: 1
