@@ -39,9 +39,9 @@ FPS = 30
 MAX_IMAGE_SECONDS = 5.0     # nenhuma imagem parada > 5s sem aviso
 RENDER_TIMEOUT_S = 300      # 5 min por job
 
-# Effect tuning (do motor testado).
+# Effect tuning (reconciliado com o short_factory.py original).
 ZOOM_MIN, ZOOM_MAX = 1.0, 1.12
-PUNCH_AMOUNT = 0.08         # +8% no pop de entrada
+PUNCH_AMOUNT = 0.06         # +6% no pop de entrada (motor original)
 PUNCH_SECONDS = 0.15        # dura 0.15s
 
 # Brand palette (drawtext / legendas).
@@ -170,8 +170,10 @@ def _zoompan_expr(effect: str, duration: float) -> tuple[str, str, str]:
     n_frames = max(2, int(round(duration * FPS)))
     inc = (ZOOM_MAX - ZOOM_MIN) / (n_frames - 1)
     punch_frames = max(1, int(round(PUNCH_SECONDS * FPS)))
-    # Punch pop that decays over the first PUNCH_SECONDS.
-    punch = f"{PUNCH_AMOUNT}*max(0\\,1-on/{punch_frames})"
+    # Punch pop (motor original): if(lt(on,N), amount*(1-on/N), 0) somado ao z.
+    punch = (
+        f"if(lt(on\\,{punch_frames})\\,{PUNCH_AMOUNT}*(1-on/{punch_frames})\\,0)"
+    )
     x_center = "iw/2-(iw/zoom/2)"
     y_center = "ih/2-(ih/zoom/2)"
 
@@ -264,16 +266,22 @@ def _drawtext(textfile: Path, color: str, y_expr: str, enable: str,
     return "drawtext=" + ":".join(parts)
 
 
+# force_style reconciliado com o short_factory.py original.
+# Colour ASS = &HBBGGRR&. Navy #1A233C -> BGR 3C231A. Fontsize em espaço ASS
+# (PlayResY default), não em px do vídeo.
 _ASS_STYLES = {
-    # PrimaryColour/OutlineColour are &HAABBGGRR. Navy #1A233C -> BGR 3C231A.
-    "navy-white": "PrimaryColour=&H003C231A,OutlineColour=&H00FFFFFF,BorderStyle=1,"
-                  "Outline=4,Shadow=0,Bold=1,Alignment=2,MarginV=240,Fontsize=54",
-    "white-black": "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,"
-                   "Outline=4,Shadow=0,Bold=1,Alignment=2,MarginV=240,Fontsize=54",
-    "yellow-pop": "PrimaryColour=&H0000F0FF,OutlineColour=&H00000000,BorderStyle=1,"
-                  "Outline=6,Shadow=0,Bold=1,Alignment=2,MarginV=260,Fontsize=60",
-    "karaoke": "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,"
-               "Outline=4,Shadow=0,Bold=1,Alignment=2,MarginV=240,Fontsize=54",
+    "navy-white": "FontName=DejaVu Sans,Bold=1,Fontsize=15,"
+                  "PrimaryColour=&H3C231A&,OutlineColour=&HFFFFFF&,"
+                  "Outline=2.2,MarginV=55,Alignment=2",
+    "white-black": "FontName=DejaVu Sans,Bold=1,Fontsize=15,"
+                   "PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,"
+                   "Outline=2.2,MarginV=55,Alignment=2",
+    "yellow-pop": "FontName=DejaVu Sans,Bold=1,Fontsize=17,"
+                  "PrimaryColour=&H00F0FF&,OutlineColour=&H000000&,"
+                  "Outline=3,MarginV=60,Alignment=2",
+    "karaoke": "FontName=DejaVu Sans,Bold=1,Fontsize=15,"
+               "PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,"
+               "Outline=2.2,MarginV=55,Alignment=2",
 }
 
 
@@ -363,13 +371,12 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
             )
             style = _ASS_STYLES.get(config.get("caption_style", "navy-white"),
                                     _ASS_STYLES["navy-white"])
-            if font:
-                style = f"FontName=DejaVu Sans," + style
             filters.append(f"subtitles='{ff_path(fixed)}':force_style='{style}'")
 
     # hook: 2 linhas (navy + coral), frame 0 sem fade
     hook = config.get("hook", {}) or {}
-    hook_text = (hook.get("text") or "").strip()
+    # aceita "|" como separador de linha (ex.: "A JANITOR DIED|WITH $9,000,000")
+    hook_text = (hook.get("text") or "").replace("|", "\n").strip()
     hook_dur = float(hook.get("duration", 2.5) or 2.5)
     if hook_text:
         lines = hook_text.split("\n")
@@ -389,8 +396,9 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
     cta_start = float(cta.get("start", 0.0) or 0.0)
     cta_end = float(cta.get("end", 0.0) or 0.0)
     if cta_text and cta_end > cta_start:
+        # CTA acima da faixa de legendas (que fica no rodapé) para não colidir.
         (work_dir / "cta.txt").write_text(_wrap(cta_text, 58), encoding="utf-8")
-        filters.append(_drawtext(work_dir / "cta.txt", CORAL, "h*0.78",
+        filters.append(_drawtext(work_dir / "cta.txt", CORAL, "h*0.58",
                                  f"between(t,{cta_start:.3f},{cta_end:.3f})", 58, font))
 
     # --- 5) audio: amix narração + música(loop) + SFX(adelay) --- #
@@ -446,9 +454,11 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
         if len(amix_labels) == 1:
             fc_parts.append(f"{amix_labels[0]}apad,atrim=0:{total_duration:.3f}[aout]")
         else:
+            # amix reconciliado com o original: duration=first (dura o tempo da
+            # narração, que é o 1º input) + normalize=0 (preserva níveis).
             fc_parts.append(
                 "".join(amix_labels)
-                + f"amix=inputs={len(amix_labels)}:duration=longest:normalize=0,"
+                + f"amix=inputs={len(amix_labels)}:duration=first:normalize=0,"
                 + f"atrim=0:{total_duration:.3f}[aout]"
             )
 

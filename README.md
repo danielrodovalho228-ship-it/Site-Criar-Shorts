@@ -86,10 +86,20 @@ Hardening de produção (Parte C3): pathlib + forward slashes, **nunca**
 `-shortest` (usa `-map` + `-t`), concat `-f concat -safe 0`, aviso de imagem
 >5s, aviso de MP3 trocado, timeout de 5 min, log completo do ffmpeg por projeto.
 
-> ⚠️ **Reconciliar com o `short_factory.py`:** o motor foi portado a partir da
-> **especificação detalhada** (o arquivo `.py` não chegou no anexo). Ao ter o
-> `short_factory.py` original em mãos, faça um diff contra `render.py` e ajuste
-> qualquer parâmetro do seu motor já testado que divirja.
+### Parâmetros reconciliados com o motor original
+
+- `force_style` navy: `FontName=DejaVu Sans,Bold=1,Fontsize=15,PrimaryColour=&H3C231A&,OutlineColour=&HFFFFFF&,Outline=2.2,MarginV=55,Alignment=2`
+- punch dentro do zoompan: `if(lt(on,N),0.06*(1-on/N),0)` somado ao `z`
+- áudio: `amix=...:duration=first:normalize=0`
+- saída final: `-preset medium -crf 19`
+- hook aceita `|` como quebra de linha (ex.: `A JANITOR DIED|WITH $9,000,000`)
+
+Melhorias mantidas sobre o original: word-wrap do CTA/hook (safe area),
+resolução robusta de caminhos (uploads/), CTA acima da faixa de legendas.
+
+> ⚠️ O `.py` original ainda não chegou no anexo — o motor foi portado da spec +
+> parâmetros exatos que o PO forneceu. Ao ter o `short_factory.py` em mãos, faça
+> um diff final contra `render.py`.
 
 ## Smoke test
 
