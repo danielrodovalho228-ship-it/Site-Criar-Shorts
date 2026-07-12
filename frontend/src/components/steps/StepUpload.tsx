@@ -48,35 +48,56 @@ export function StepUpload() {
   const patchConfig = useStore((s) => s.patchConfig)
   const setStep = useStore((s) => s.setStep)
   const saveConfig = useStore((s) => s.saveConfig)
-  const [name, setName] = useState('Meu Short')
+  const [name, setName] = useState('')
   const [srtPreview, setSrtPreview] = useState<string[]>([])
+
+  // subtítulo humano por template (sem badge em CAPS)
+  const templateSub = (id: string, fallback: string) =>
+    id === 'book_summary'
+      ? 'estilo resumo de livro'
+      : id === 'custom'
+        ? 'controle total'
+        : fallback.toLowerCase()
 
   if (!project) {
     return (
-      <section className="flex flex-col gap-5">
+      <section className="flex flex-col gap-6">
         <div>
           <label className="text-sm font-bold text-navy">Nome do projeto</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded-xl border-[3px] border-navy px-3 py-2 font-semibold outline-none focus:bg-mustard/10"
+            placeholder="ex: Short 3 — Enough"
+            className="mt-1 w-full rounded-xl border-[3px] border-navy px-3 py-2 font-semibold outline-none placeholder:font-medium placeholder:text-navy/35 focus:bg-mustard/10"
           />
         </div>
+
         {PRESETS.length > 0 && (
           <div>
-            <h2 className="mb-3 text-lg font-black text-navy">
-              Presets prontos
+            <h2 className="mb-3 font-display text-lg font-bold text-navy">
+              Continue de onde parou
             </h2>
-            <div className="grid gap-4">
+            <div className="flex flex-col gap-4">
               {PRESETS.map((p) => (
                 <button
                   key={p.id}
                   disabled={busy}
                   onClick={() => loadPreset(p)}
-                  className="card-sticker flex flex-col gap-1 bg-mustard/20 p-5 text-left transition hover:-translate-y-0.5 disabled:opacity-50"
+                  className="card-sticker flex items-stretch overflow-hidden bg-mustard/15 text-left transition hover:-translate-y-0.5 disabled:opacity-50"
                 >
-                  <div className="text-lg font-black text-navy">⭐ {p.name}</div>
-                  <p className="text-sm font-medium text-navy/60">{p.description}</p>
+                  <img
+                    src="/assets/short1_thumb.jpg"
+                    alt="Prévia do Short 1"
+                    className="w-24 shrink-0 border-r-[3px] border-navy object-cover sm:w-32"
+                  />
+                  <div className="flex flex-col justify-center gap-2 p-5">
+                    <div className="font-display text-xl font-bold text-navy">
+                      ⭐ {p.name}
+                    </div>
+                    <p className="max-w-md text-sm font-medium text-navy/70">
+                      {p.description}
+                    </p>
+                  </div>
                 </button>
               ))}
             </div>
@@ -84,25 +105,23 @@ export function StepUpload() {
         )}
 
         <div>
-          <h2 className="mb-3 text-lg font-black text-navy">Ou escolha um template</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <h2 className="mb-3 font-display text-lg font-bold text-navy">
+            Ou comece do zero
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
             {templates.map((t) => (
               <button
                 key={t.id}
                 disabled={busy}
                 onClick={() => createFromTemplate(t.id, name.trim() || 'Meu Short')}
-                className="card-sticker flex flex-col gap-2 p-5 text-left transition hover:-translate-y-0.5 disabled:opacity-50"
+                className="card-sticker flex flex-col gap-0.5 p-4 text-left transition hover:-translate-y-0.5 disabled:opacity-50"
               >
-                <div className="text-lg font-black text-navy">{t.name}</div>
-                <div className="text-xs font-bold uppercase tracking-wide text-teal">
-                  {t.niche}
+                <div className="font-display text-base font-bold text-navy">
+                  {t.name}
                 </div>
-                <p className="text-sm font-medium text-navy/60">{t.description}</p>
-                {t.recipe && (
-                  <p className="mt-1 border-t-2 border-navy/10 pt-2 text-xs text-navy/45">
-                    {t.recipe}
-                  </p>
-                )}
+                <span className="text-xs font-medium text-navy/50">
+                  {templateSub(t.id, t.niche)}
+                </span>
               </button>
             ))}
           </div>

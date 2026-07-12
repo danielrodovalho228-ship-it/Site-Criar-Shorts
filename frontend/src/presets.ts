@@ -28,7 +28,7 @@ export const SHORT1: Preset = {
   id: 'the-chapter-short-1',
   name: 'The Chapter — Short 1',
   description:
-    'Config completo do Short 1 (janitor / $9M). Ordem, timing, hook, CTA e correções prontos — falta só subir as 13 imagens + MP3 + SRT.',
+    'O short do faxineiro de $9M — timing, hook e CTA já montados. Só arrastar os arquivos.',
   template_id: 'book_summary',
   hook: { text: 'A JANITOR DIED|WITH $9,000,000', duration: 4.0 },
   cta: { text: 'FULL BREAKDOWN -> @TheChapterBooks', start: 38.6, end: 43.8 },

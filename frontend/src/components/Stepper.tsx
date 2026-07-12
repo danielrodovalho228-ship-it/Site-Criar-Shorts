@@ -22,10 +22,10 @@ export function Stepper() {
               className={[
                 'flex items-center gap-2 rounded-xl border-[3px] border-navy px-3 py-2 text-sm font-bold transition',
                 active
-                  ? 'bg-navy text-white shadow-[3px_3px_0_0_#E9C46A]'
+                  ? 'bg-white text-navy shadow-[3px_3px_0_0_#E9C46A]'
                   : done
                     ? 'bg-teal text-white'
-                    : 'bg-white text-navy',
+                    : 'bg-white text-navy opacity-70',
                 reachable ? 'cursor-pointer' : 'cursor-not-allowed opacity-40',
               ].join(' ')}
             >
@@ -36,7 +36,9 @@ export function Stepper() {
               >
                 {done ? '✓' : i + 1}
               </span>
-              <span className="hidden sm:inline">{label}</span>
+              <span className={`hidden sm:inline ${active ? 'marker-underline' : ''}`}>
+                {label}
+              </span>
             </button>
             {i < STEPS.length - 1 && <span className="h-1 w-4 rounded bg-navy/30 sm:w-8" />}
           </div>

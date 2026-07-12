@@ -20,8 +20,9 @@ export default function App() {
   if (waking) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <span className="text-5xl">🏭</span>
-        <h1 className="text-2xl font-black text-navy">Short Factory</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-navy">
+          Short Factor<span className="text-coral">y</span>
+        </h1>
         <div className="card-sticker bg-mustard/20 px-6 py-5">
           <p className="text-lg font-black text-navy">⏳ Acordando o servidor…</p>
           <p className="mt-1 text-sm font-medium text-navy/60">
@@ -38,26 +39,22 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 py-6">
-      <header className="mb-6 flex flex-col items-center gap-3 text-center">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl border-[3px] border-navy bg-navy text-2xl">
-            🏭
-          </span>
-          <h1 className="text-3xl font-black tracking-tight text-navy">
-            Short Factory
-          </h1>
-        </div>
-        <p className="max-w-lg text-sm font-medium text-navy/60">
-          Traga sua voz, suas imagens e seu roteiro. A fábrica monta o Short
-          vertical com sincronização, zoom, hook, CTA, legendas e SFX.
-        </p>
+      <header className="mb-7 flex flex-col items-center gap-4 text-center">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-navy">
+          Short Factor<span className="text-coral">y</span>
+        </h1>
+        {step === 0 && (
+          <div className="flex flex-col items-center gap-2">
+            <p className="font-display text-2xl font-bold leading-tight text-navy sm:text-3xl">
+              O short é seu. A edição é nossa.
+            </p>
+            <p className="max-w-md text-sm font-medium text-navy/55">
+              Sobe voz, imagens e roteiro — sai o vídeo montado, sincronizado e
+              legendado.
+            </p>
+          </div>
+        )}
       </header>
-
-      {/* Aviso de persistência (item 3): free tier tem disco efêmero. */}
-      <div className="mb-4 rounded-xl border-2 border-navy/15 bg-mustard/15 px-4 py-2 text-center text-xs font-semibold text-navy/70">
-        ⚠️ Versão demo: seus projetos e uploads duram só esta sessão. Baixe o MP4
-        <b> logo após gerar</b> — no plano grátis o arquivo é temporário.
-      </div>
 
       <div className="mb-8">
         <Stepper />
@@ -70,8 +67,8 @@ export default function App() {
         {step === 3 && <StepGenerate />}
       </main>
 
-      <footer className="mt-8 text-center text-xs font-medium text-navy/40">
-        P0 · dogfood · made with Short Factory
+      <footer className="mt-10 text-center text-sm text-gray-400">
+        Demo — projetos duram a sessão · baixe o MP4 ao gerar
       </footer>
 
       <Toaster />
