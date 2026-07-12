@@ -17,6 +17,8 @@ async function j<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  health: () => fetch(`${BASE}/health`).then(j<{ status: string }>),
+
   listTemplates: () => fetch(`${BASE}/templates`).then(j<Template[]>),
 
   createProject: (body: { name?: string; template_id?: string }) =>

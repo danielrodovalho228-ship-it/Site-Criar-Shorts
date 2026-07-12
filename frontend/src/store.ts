@@ -24,6 +24,8 @@ interface State {
   toasts: Toast[]
   preset: Preset | null
   interrupted: boolean
+  waking: boolean
+  wakeSeconds: number
 
   init: () => Promise<void>
   toast: (kind: Toast['kind'], msg: string) => void
@@ -70,8 +72,30 @@ export const useStore = create<State>((set, get) => ({
   toasts: [],
   preset: null,
   interrupted: false,
+  waking: true,
+  wakeSeconds: 0,
 
   init: async () => {
+    // Wake-up (item 2): no free tier o Render hiberna após 15 min e leva ~50s
+    // pra acordar. Pinga /health com retry mostrando "acordando o servidor".
+    set({ waking: true, wakeSeconds: 0 })
+    let awake = false
+    const t0 = Date.now()
+    for (let attempt = 0; attempt < 45; attempt++) {
+      try {
+        await api.health()
+        awake = true
+        break
+      } catch {
+        set({ wakeSeconds: Math.round((Date.now() - t0) / 1000) })
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+    }
+    set({ waking: false })
+    if (!awake) {
+      get().toast('error', 'Servidor não respondeu. Recarregue a página em 1 min.')
+      return
+    }
     try {
       const [templates, sfxLib, musicLib] = await Promise.all([
         api.listTemplates(),
@@ -84,8 +108,12 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  toast: (kind, msg) =>
-    set((s) => ({ toasts: [...s.toasts, { id: ++toastId, kind, msg }] })),
+  toast: (kind, msg) => {
+    const id = ++toastId
+    set((s) => ({ toasts: [...s.toasts, { id, kind, msg }] }))
+    // auto-dismiss (evita empilhar e cobrir botões)
+    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 5000)
+  },
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 

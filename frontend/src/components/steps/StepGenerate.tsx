@@ -68,6 +68,10 @@ export function StepGenerate() {
 
       {done && (
         <div className="flex w-full max-w-sm flex-col items-center gap-4">
+          <p className="rounded-lg bg-coral/15 px-3 py-2 text-center text-xs font-bold text-navy">
+            ⬇️ Baixe agora — no plano grátis o arquivo some se o servidor
+            reiniciar.
+          </p>
           <video
             controls
             src={api.downloadUrl(project.id)}

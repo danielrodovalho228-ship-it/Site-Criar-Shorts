@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -39,7 +40,7 @@ WORK_WIDTH = 1400
 
 # Production guardrails (Part C3).
 MAX_IMAGE_SECONDS = 5.0     # nenhuma imagem parada > 5s sem aviso
-RENDER_TIMEOUT_S = 300      # 5 min por job
+RENDER_TIMEOUT_S = 600      # 10 min por passo (CPU lenta do free tier; resume cobre restart)
 
 # Effect tuning (reconciliado com o short_factory.py original).
 ZOOM_MIN, ZOOM_MAX = 1.0, 1.12
@@ -120,6 +121,47 @@ def run_ffmpeg(cmd: List[str], log_path: Path, timeout: int = RENDER_TIMEOUT_S) 
         log.write(proc.stdout or b"")
     if proc.returncode != 0:
         tail = (proc.stdout or b"").decode("utf-8", "replace").splitlines()[-15:]
+        raise RuntimeError("ffmpeg falhou (rc=" + str(proc.returncode) + "):\n" + "\n".join(tail))
+
+
+def run_ffmpeg_progress(cmd: List[str], log_path: Path, total_seconds: float,
+                        report: Callable[[float, Optional[float]], None],
+                        timeout: int = RENDER_TIMEOUT_S) -> None:
+    """Como run_ffmpeg, mas faz stream do ``-progress`` do ffmpeg.
+
+    Chama ``report(frac, eta_seconds)`` conforme o encode avança, para a barra
+    do usuário nunca "travar" num passo longo (progresso honesto, item 4).
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("ab") as logf:
+        logf.write(("\n$ " + " ".join(cmd) + "\n").encode("utf-8", "replace"))
+    full = [cmd[0], "-progress", "pipe:1", "-nostats", *cmd[1:]]
+    start = time.monotonic()
+    with log_path.open("ab") as logf:
+        proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=logf, text=True)
+        assert proc.stdout is not None
+        try:
+            for line in proc.stdout:
+                if line.startswith("out_time_us=") and total_seconds > 0:
+                    raw = line.strip().split("=", 1)[1]
+                    try:
+                        us = int(raw)
+                    except ValueError:
+                        continue
+                    frac = max(0.0, min(1.0, us / 1e6 / total_seconds))
+                    elapsed = time.monotonic() - start
+                    eta = (elapsed / frac - elapsed) if frac > 0.03 else None
+                    report(frac, eta)
+                elif line.startswith("progress=end"):
+                    report(1.0, 0.0)
+                if time.monotonic() - start > timeout:
+                    proc.kill()
+                    raise RuntimeError(f"ffmpeg excedeu o timeout de {timeout}s")
+        finally:
+            proc.stdout.close()
+        proc.wait()
+    if proc.returncode != 0:
+        tail = log_path.read_bytes().decode("utf-8", "replace").splitlines()[-15:]
         raise RuntimeError("ffmpeg falhou (rc=" + str(proc.returncode) + "):\n" + "\n".join(tail))
 
 
@@ -501,9 +543,11 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
     # --- 1) cenas: 1 clipe por imagem (resumível: pula clipe já pronto) --- #
     durations = _clip_durations(images, total_duration)
     clip_paths: List[Path] = []
+    n_imgs = max(1, len(images))
     for i, img in enumerate(images):
         clip_path = clips_dir / f"clip_{i:03d}.mp4"
-        progress_cb(5.0 + 45.0 * i / max(1, len(images)),
+        # cenas ocupam 2%..60% da barra (item 4)
+        progress_cb(2.0 + 58.0 * i / n_imgs,
                     f"Renderizando cena {i + 1}/{len(images)}")
         if not (resume and clip_path.exists()):
             effect = img.get("effect") or ("zoom-in" if i % 2 == 0 else "zoom-out")
@@ -516,7 +560,7 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
     # --- 2) concat (-f concat -safe 0), NUNCA -shortest (checkpoint) --- #
     silent_video = work_dir / "video_silent.mp4"
     if not (resume and silent_video.exists()):
-        progress_cb(55.0, "Concatenando cenas (punch)")
+        progress_cb(60.0, "Concatenando cenas (punch)")
         concat_list = work_dir / "concat.txt"
         concat_list.write_text(
             "".join(f"file '{ff_path(p)}'\n" for p in clip_paths), encoding="utf-8"
@@ -533,10 +577,17 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
     if filters:
         video_final = work_dir / "video_final.mp4"
         if not (resume and video_final.exists()):
-            progress_cb(65.0, "Aplicando legendas, hook e CTA")
+            progress_cb(62.0, "Codificando vídeo (legendas, hook, CTA)")
+
+            def _vreport(frac: float, eta: Optional[float]) -> None:
+                msg = "Codificando vídeo (legendas, hook, CTA)"
+                if eta and eta > 1:
+                    msg += f" — ~{int(eta)}s restantes"
+                progress_cb(62.0 + 30.0 * frac, msg)  # encode ocupa 62%..92%
+
             # -threads 1 + rc-lookahead baixo derrubam o pico de RAM do encode
             # (619MB -> ~290MB) sem perda visível de qualidade no crf 19.
-            run_ffmpeg(
+            run_ffmpeg_progress(
                 ["ffmpeg", "-y", "-i", ff_path(silent_video),
                  "-vf", ",".join(filters), "-an",
                  "-c:v", "libx264", "-preset", "medium", "-crf", "19",
@@ -544,7 +595,7 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
                  "-pix_fmt", "yuv420p", "-r", str(FPS),
                  "-t", f"{total_duration:.3f}",
                  "-movflags", "+faststart", ff_path(video_final)],
-                log_path,
+                log_path, total_duration, _vreport,
             )
         video_base = video_final
 
@@ -553,11 +604,11 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
     if resume and mix_path.exists():
         have_audio = True
     else:
-        progress_cb(82.0, "Mixando áudio (narração + música + SFX)")
+        progress_cb(93.0, "Mixando áudio (narração + música + SFX)")
         have_audio = _run_audio_mix(config, work_dir, total_duration, mix_path, log_path)
 
     # --- 5) MUX: junta vídeo + áudio SEM re-encode (-c copy) --- #
-    progress_cb(95.0, "Finalizando (mux sem re-encode)")
+    progress_cb(97.0, "Finalizando (mux sem re-encode)")
     out_path = work_dir / "short.mp4"
     cmd = ["ffmpeg", "-y", "-i", ff_path(video_base)]
     if have_audio:
