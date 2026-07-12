@@ -49,6 +49,28 @@ builda o `Dockerfile` (~5-10 min na 1ª vez) e te dá uma URL pública.
 
 ---
 
+## Opção A2 — Frontend na Vercel + Backend no Render (split) 🔷
+
+Bom se você já paga a Vercel: o **frontend** roda na Vercel (CDN rápido, seu
+domínio) e o **backend + ffmpeg** fica no Render (o render pesado precisa do
+container — não roda em serverless).
+
+**Passos:**
+1. O backend já está no Render (Opção A) — anote a URL, ex.:
+   `https://short-factory-04vp.onrender.com`.
+2. Na Vercel: **Add New → Project** → importe este repositório.
+3. Em **Root Directory**, selecione **`frontend`** (o app Vite está lá).
+4. Em **Environment Variables**, adicione:
+   `VITE_API_BASE = https://short-factory-04vp.onrender.com`
+   (a URL do seu backend Render, sem barra no final).
+5. **Deploy.** A Vercel builda o Vite e te dá a URL do frontend.
+
+Pronto: o frontend na Vercel chama a API do Render (CORS já liberado no
+backend). O wake-up do app "acorda" o Render no primeiro clique.
+
+> Sem `VITE_API_BASE`, o frontend chama `/api` na mesma origem (modo monólito
+> do Render, Opção A). Com a variável, ele aponta para o backend remoto.
+
 ## Opção B — Railway (alternativa simples)
 
 1. **https://railway.app** → New Project → **Deploy from GitHub repo**.

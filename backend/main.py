@@ -40,11 +40,12 @@ from templates_loader import list_templates, load_template, template_config
 
 app = FastAPI(title="Short Factory API", version="1.0.0")
 
-# CORS for the Vite dev server (Part D, Sprint 2).
+# CORS: libera qualquer origem (frontend na Vercel + Vite dev). Sem cookies/
+# auth em P0, então allow_credentials=False (permite usar "*").
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,6 +1,10 @@
 import type { AssetInfo, Job, Project, ProjectConfig, Template } from '../types'
 
-const BASE = '/api'
+// Em dev/monólito (Render), VITE_API_BASE fica vazio -> usa "/api" na mesma
+// origem. No split (frontend na Vercel), defina VITE_API_BASE com a URL do
+// backend Render, ex.: https://short-factory-04vp.onrender.com
+const API_ORIGIN = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
+const BASE = `${API_ORIGIN}/api`
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
