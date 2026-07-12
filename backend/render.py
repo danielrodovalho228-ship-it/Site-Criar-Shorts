@@ -26,6 +26,7 @@ motor used by the CLI and the site.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -35,12 +36,24 @@ from typing import Callable, List, Optional
 # Output spec — vertical short.
 WIDTH, HEIGHT = 1080, 1920
 FPS = 30
-# Upscale antes do zoompan (anti-jitter do zoom — motor original).
-WORK_WIDTH = 1400
+# Upscale antes do zoompan (anti-jitter). 1200 (era 1400): ~25% menos pixels
+# no zoompan, diferença visual mínima em 9:16.
+WORK_WIDTH = 1200
+
+# Qualidade do encode final, configurável por env (default 'fast' p/ free tier).
+#   RENDER_QUALITY=fast -> veryfast (rápido, mesmo crf = mesma qualidade visual)
+#   RENDER_QUALITY=high -> medium  (arquivo menor, mais lento)
+_RENDER_QUALITY = os.environ.get("RENDER_QUALITY", "fast").lower()
+FINAL_PRESET = "medium" if _RENDER_QUALITY == "high" else "veryfast"
 
 # Production guardrails (Part C3).
 MAX_IMAGE_SECONDS = 5.0     # nenhuma imagem parada > 5s sem aviso
-RENDER_TIMEOUT_S = 600      # 10 min por passo (CPU lenta do free tier; resume cobre restart)
+RENDER_TIMEOUT_S = 600      # teto absoluto de segurança (fallback)
+# Timeouts POR ETAPA (item 2): erro específico + resume recomeça só da etapa.
+CLIP_TIMEOUT_S = 60         # por cena
+CONCAT_TIMEOUT_S = 120
+AUDIO_TIMEOUT_S = 120
+ENCODE_TIMEOUT_S = 300      # encode final
 
 # Effect tuning (reconciliado com o short_factory.py original).
 ZOOM_MIN, ZOOM_MAX = 1.0, 1.12
@@ -245,7 +258,7 @@ def _zoompan_expr(effect: str, duration: float) -> tuple[str, str, str]:
 
 
 def _render_clip(image_path: str, duration: float, effect: str, out_path: Path,
-                 log_path: Path) -> None:
+                 log_path: Path, timeout: int = CLIP_TIMEOUT_S) -> None:
     z, x, y = _zoompan_expr(effect, duration)
     n_frames = max(2, int(round(duration * FPS)))
     # 1) cover-fill p/ 9:16, 2) UPSCALE (scale=1400:-1) antes do zoompan
@@ -266,12 +279,13 @@ def _render_clip(image_path: str, duration: float, effect: str, out_path: Path,
         "-i", ff_path(image_path),
         "-vf", vf,
         "-frames:v", str(n_frames),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        # intermediário: ultrafast/crf18 (o encode final dá o acabamento).
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
         "-threads", "2",  # limita RAM do zoompan+encode (independe de nº de cores)
         "-pix_fmt", "yuv420p",
         ff_path(out_path),
     ]
-    run_ffmpeg(cmd, log_path)
+    run_ffmpeg(cmd, log_path, timeout=timeout)
 
 
 # --------------------------------------------------------------------------- #
@@ -496,7 +510,7 @@ def _run_audio_mix(config: dict, work_dir: Path, total_duration: float,
         "-t", f"{total_duration:.3f}",
         ff_path(mix_path),
     ]
-    run_ffmpeg(cmd, log_path)
+    run_ffmpeg(cmd, log_path, timeout=AUDIO_TIMEOUT_S)
     return True
 
 
@@ -554,7 +568,16 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
             img_path = _resolve_image(work_dir, str(img["file"]))
             if img_path is None:
                 raise RuntimeError(f"Imagem não encontrada: {img.get('file')}")
-            _render_clip(img_path, durations[i], effect, clip_path, log_path)
+            try:
+                _render_clip(img_path, durations[i], effect, clip_path, log_path)
+            except RuntimeError as exc:
+                if "timeout" in str(exc).lower():
+                    raise RuntimeError(
+                        f"Cena {i + 1}/{len(images)} ({Path(str(img['file'])).name}) "
+                        f"excedeu {CLIP_TIMEOUT_S}s. Use 'Retomar' para continuar "
+                        f"daqui, ou RENDER_QUALITY/instância mais rápida."
+                    ) from exc
+                raise
         clip_paths.append(clip_path)
 
     # --- 2) concat (-f concat -safe 0), NUNCA -shortest (checkpoint) --- #
@@ -568,7 +591,7 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
         run_ffmpeg(
             ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", ff_path(concat_list),
              "-c", "copy", ff_path(silent_video)],
-            log_path,
+            log_path, timeout=CONCAT_TIMEOUT_S,
         )
 
     # --- 3) VÍDEO: aplica legendas/hook/CTA num passo só, SEM áudio (checkpoint) --- #
@@ -585,17 +608,18 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
                     msg += f" — ~{int(eta)}s restantes"
                 progress_cb(62.0 + 30.0 * frac, msg)  # encode ocupa 62%..92%
 
-            # -threads 1 + rc-lookahead baixo derrubam o pico de RAM do encode
-            # (619MB -> ~290MB) sem perda visível de qualidade no crf 19.
+            # -threads 1 + rc-lookahead baixo derrubam o pico de RAM do encode.
+            # preset via RENDER_QUALITY (default veryfast); crf 19 = mesma
+            # qualidade visual do medium, só arquivo um pouco maior.
             run_ffmpeg_progress(
                 ["ffmpeg", "-y", "-i", ff_path(silent_video),
                  "-vf", ",".join(filters), "-an",
-                 "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+                 "-c:v", "libx264", "-preset", FINAL_PRESET, "-crf", "19",
                  "-threads", "1", "-x264-params", "rc-lookahead=10:sync-lookahead=0",
                  "-pix_fmt", "yuv420p", "-r", str(FPS),
                  "-t", f"{total_duration:.3f}",
                  "-movflags", "+faststart", ff_path(video_final)],
-                log_path, total_duration, _vreport,
+                log_path, total_duration, _vreport, timeout=ENCODE_TIMEOUT_S,
             )
         video_base = video_final
 
@@ -617,7 +641,7 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
     if have_audio:
         cmd += ["-map", "1:a:0", "-c:a", "copy"]
     cmd += ["-t", f"{total_duration:.3f}", "-movflags", "+faststart", ff_path(out_path)]
-    run_ffmpeg(cmd, log_path)
+    run_ffmpeg(cmd, log_path, timeout=CONCAT_TIMEOUT_S)
 
     progress_cb(100.0, "Concluído")
     return ff_path(out_path)

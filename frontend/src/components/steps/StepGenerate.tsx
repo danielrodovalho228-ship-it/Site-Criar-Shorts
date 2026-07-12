@@ -57,12 +57,23 @@ export function StepGenerate() {
         </div>
       )}
 
-      {job?.status === 'failed' && (
-        <div className="card-sticker max-w-md bg-coral/10 p-4 text-sm font-medium text-navy">
-          <b className="text-coral">Falha no render.</b>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs">
+      {job?.status === 'failed' && !done && (
+        <div className="card-sticker flex max-w-md flex-col items-center gap-3 bg-coral/10 p-4 text-sm font-medium text-navy">
+          <b className="text-coral">O render parou antes de terminar.</b>
+          <pre className="max-h-32 w-full overflow-auto whitespace-pre-wrap text-xs text-navy/70">
             {job.error}
           </pre>
+          <p className="text-xs text-navy/60">
+            As cenas já renderizadas foram salvas. Retome que ele continua de
+            onde parou.
+          </p>
+          <button
+            onClick={resume}
+            disabled={busy}
+            className="btn-sticker bg-navy px-8 py-3 font-black text-white active:btn-sticker-active disabled:opacity-50"
+          >
+            ↻ Retomar de onde parou
+          </button>
         </div>
       )}
 
