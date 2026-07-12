@@ -54,6 +54,9 @@ export const api = {
   generate: (id: string) =>
     fetch(`${BASE}/projects/${id}/generate`, { method: 'POST' }).then(j<Job>),
 
+  resume: (id: string) =>
+    fetch(`${BASE}/projects/${id}/resume`, { method: 'POST' }).then(j<Job>),
+
   getJob: (jobId: string) => fetch(`${BASE}/jobs/${jobId}`).then(j<Job>),
 
   listSfx: () => fetch(`${BASE}/assets/sfx`).then(j<AssetInfo[]>),

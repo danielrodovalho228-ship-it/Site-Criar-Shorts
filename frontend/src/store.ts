@@ -23,6 +23,7 @@ interface State {
   busy: boolean
   toasts: Toast[]
   preset: Preset | null
+  interrupted: boolean
 
   init: () => Promise<void>
   toast: (kind: Toast['kind'], msg: string) => void
@@ -42,6 +43,8 @@ interface State {
   saveConfig: () => Promise<void>
 
   generate: () => Promise<void>
+  resume: () => Promise<void>
+  startPolling: (jobId: string) => void
   duplicate: () => Promise<void>
   reset: () => void
 }
@@ -66,6 +69,7 @@ export const useStore = create<State>((set, get) => ({
   busy: false,
   toasts: [],
   preset: null,
+  interrupted: false,
 
   init: async () => {
     try {
@@ -225,40 +229,75 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  // Polling resiliente (item 4): backoff exponencial 2s→4s→8s antes de
+  // declarar interrupção. Compartilhado por generate e resume.
+  startPolling: (jobId: string) => {
+    const { project } = get()
+    if (!project) return
+    let fails = 0
+    const MAX_FAILS = 5
+    const poll = async () => {
+      try {
+        const j = await api.getJob(jobId)
+        fails = 0
+        set({ job: j })
+        if (j.status === 'done') {
+          const p = await api.getProject(project.id)
+          set({ project: p, busy: false, interrupted: false })
+          get().toast('success', 'Short gerado! 🎬')
+          return
+        }
+        if (j.status === 'failed') {
+          set({ busy: false })
+          get().toast('error', `Render falhou: ${j.error ?? 'erro desconhecido'}`)
+          return
+        }
+        setTimeout(poll, 2000)
+      } catch {
+        fails += 1
+        if (fails >= MAX_FAILS) {
+          // item 3: provável restart da instância → oferece retomar
+          set({ busy: false, interrupted: true })
+          get().toast(
+            'info',
+            'O servidor não respondeu (pode ter reiniciado). Você pode retomar o render de onde parou.',
+          )
+          return
+        }
+        const delay = Math.min(2000 * 2 ** (fails - 1), 8000) // 2s, 4s, 8s, 8s…
+        setTimeout(poll, delay)
+      }
+    }
+    setTimeout(poll, 2000)
+  },
+
   generate: async () => {
     const { project } = get()
     if (!project) return
-    set({ busy: true, job: null })
+    set({ busy: true, job: null, interrupted: false })
     try {
       await get().saveConfig()
       const job = await api.generate(project.id)
       set({ job })
-      // poll every 2s
-      const poll = async () => {
-        try {
-          const j = await api.getJob(job.id)
-          set({ job: j })
-          if (j.status === 'done') {
-            const p = await api.getProject(project.id)
-            set({ project: p, busy: false })
-            get().toast('success', 'Short gerado! 🎬')
-            return
-          }
-          if (j.status === 'failed') {
-            set({ busy: false })
-            get().toast('error', `Render falhou: ${j.error ?? 'erro desconhecido'}`)
-            return
-          }
-          setTimeout(poll, 2000)
-        } catch (e) {
-          set({ busy: false })
-          get().toast('error', `Falha no polling: ${(e as Error).message}`)
-        }
-      }
-      setTimeout(poll, 2000)
+      get().startPolling(job.id)
     } catch (e) {
       set({ busy: false })
       get().toast('error', `Não foi possível gerar: ${(e as Error).message}`)
+    }
+  },
+
+  resume: async () => {
+    const { project } = get()
+    if (!project) return
+    set({ busy: true, interrupted: false })
+    try {
+      const job = await api.resume(project.id)
+      set({ job })
+      get().toast('info', 'Retomando o render…')
+      get().startPolling(job.id)
+    } catch (e) {
+      set({ busy: false, interrupted: true })
+      get().toast('error', `Não foi possível retomar: ${(e as Error).message}`)
     }
   },
 
@@ -284,5 +323,6 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  reset: () => set({ project: null, job: null, step: 0, preset: null }),
+  reset: () =>
+    set({ project: null, job: null, step: 0, preset: null, interrupted: false }),
 }))

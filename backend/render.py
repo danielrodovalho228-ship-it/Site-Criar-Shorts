@@ -225,6 +225,7 @@ def _render_clip(image_path: str, duration: float, effect: str, out_path: Path,
         "-vf", vf,
         "-frames:v", str(n_frames),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-threads", "2",  # limita RAM do zoompan+encode (independe de nº de cores)
         "-pix_fmt", "yuv420p",
         ff_path(out_path),
     ]
@@ -299,74 +300,57 @@ def _apply_caption_fixes(srt_text: str, fixes: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# The engine (pure)
+# Pre-flight (item 2): valida TODOS os assets antes de renderizar
 # --------------------------------------------------------------------------- #
-def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
-    """Assemble a 1080x1920 short from ``config`` and return the mp4 path."""
+def validate_assets(config: dict, work_dir: Path) -> List[str]:
+    """Confere existência/legibilidade de imagens, áudio, música, SFX e SRT.
+
+    Retorna a lista de problemas (vazia = tudo ok). Chamado ANTES de qualquer
+    ffmpeg, para falhar cedo e claro em vez de travar aos 85%.
+    """
     work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-    log_path = work_dir / "ffmpeg.log"
-    log_path.write_bytes(b"")  # fresh log per render
-    clips_dir = work_dir / "clips"
-    clips_dir.mkdir(exist_ok=True)
+    uploads = work_dir.parent / "uploads"
+    problems: List[str] = []
 
     images = config.get("images", []) or []
     if not images:
-        raise RuntimeError("Nenhuma imagem no projeto.")
+        problems.append("Nenhuma imagem no projeto.")
+    for img in images:
+        if _resolve_image(work_dir, str(img.get("file", ""))) is None:
+            problems.append(f"Imagem não encontrada: {img.get('file')}")
 
-    audio = config.get("audio", {}) or {}
-    audio_file = audio.get("file")
-    total_duration = float(audio.get("duration", 0.0) or 0.0)
-    if total_duration <= 0:
-        total_duration = sum(_clip_durations(images, len(images) * 3.0))
+    audio_file = (config.get("audio", {}) or {}).get("file")
+    if audio_file and _resolve_image(work_dir, audio_file) is None:
+        problems.append(f"Áudio (narração) não encontrado: {audio_file}")
 
-    # --- 1) validation warnings (Part C3) --- #
-    progress_cb(2.0, "Validando assets")
-    for w in check_image_durations(images, total_duration):
-        with log_path.open("ab") as lg:
-            lg.write((w + "\n").encode("utf-8", "replace"))
-    for w in check_audio_name(audio_file, str(config.get("_project_name", ""))):
-        with log_path.open("ab") as lg:
-            lg.write((w + "\n").encode("utf-8", "replace"))
+    music_file = (config.get("music", {}) or {}).get("file")
+    if music_file and _resolve_asset(work_dir, music_file, "music") is None:
+        problems.append(f"Música não encontrada: {music_file}")
 
-    # --- 2) per-image clips (zoompan alternado + punch) --- #
-    durations = _clip_durations(images, total_duration)
-    clip_paths: List[Path] = []
-    for i, img in enumerate(images):
-        effect = img.get("effect") or ("zoom-in" if i % 2 == 0 else "zoom-out")
-        clip_path = clips_dir / f"clip_{i:03d}.mp4"
-        progress_cb(5.0 + 45.0 * i / max(1, len(images)),
-                    f"Renderizando cena {i + 1}/{len(images)}")
-        img_path = _resolve_image(work_dir, str(img["file"]))
-        if img_path is None:
-            raise RuntimeError(f"Imagem não encontrada: {img.get('file')}")
-        _render_clip(img_path, durations[i], effect, clip_path, log_path)
-        clip_paths.append(clip_path)
+    for sfx in config.get("sfx", []) or []:
+        ref = sfx.get("file", "")
+        if ref and _resolve_asset(work_dir, ref, "sfx") is None:
+            problems.append(f"SFX não encontrado: {ref}")
 
-    # --- 3) concat (-f concat -safe 0), NUNCA -shortest --- #
-    progress_cb(55.0, "Concatenando cenas (punch)")
-    concat_list = work_dir / "concat.txt"
-    concat_list.write_text(
-        "".join(f"file '{ff_path(p)}'\n" for p in clip_paths), encoding="utf-8"
-    )
-    silent_video = work_dir / "video_silent.mp4"
-    run_ffmpeg(
-        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", ff_path(concat_list),
-         "-c", "copy", ff_path(silent_video)],
-        log_path,
-    )
+    srt_rel = config.get("srt")
+    if srt_rel and _resolve_image(work_dir, srt_rel) is None:
+        problems.append(f"SRT não encontrado: {srt_rel}")
 
-    # --- 4) build final video filter: subtitles + hook + CTA --- #
-    progress_cb(70.0, "Aplicando legendas, hook e CTA")
+    _ = uploads  # (mantido para clareza do layout)
+    return problems
+
+
+def _build_video_filters(config: dict, work_dir: Path) -> List[str]:
+    """Monta a cadeia de filtros de vídeo (subtitles + hook + CTA)."""
     font = _font_file()
-    vchain: List[str] = ["[0:v]"]
     filters: List[str] = []
 
     # subtitles (com caption_fixes)
     srt_rel = config.get("srt")
     if srt_rel:
-        srt_src = work_dir.parent / "uploads" / Path(srt_rel).name
-        if srt_src.exists():
+        srt_resolved = _resolve_image(work_dir, srt_rel)
+        if srt_resolved:
+            srt_src = Path(srt_resolved)
             fixed = work_dir / "captions_fixed.srt"
             fixed.write_text(
                 _apply_caption_fixes(srt_src.read_text(encoding="utf-8", errors="replace"),
@@ -377,9 +361,8 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
                                     _ASS_STYLES["navy-white"])
             filters.append(f"subtitles='{ff_path(fixed)}':force_style='{style}'")
 
-    # hook: 2 linhas (navy + coral), frame 0 sem fade
+    # hook: 2 linhas (navy + coral), frame 0 sem fade; "|" separa as linhas
     hook = config.get("hook", {}) or {}
-    # aceita "|" como separador de linha (ex.: "A JANITOR DIED|WITH $9,000,000")
     hook_text = (hook.get("text") or "").replace("|", "\n").strip()
     hook_dur = float(hook.get("duration", 2.5) or 2.5)
     if hook_text:
@@ -394,44 +377,49 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
             filters.append(_drawtext(work_dir / "hook2.txt", CORAL, "h*0.30+110",
                                      f"between(t,0,{hook_dur:.3f})", 84, font))
 
-    # CTA: coral, janela start..end
+    # CTA: coral, janela start..end, acima da faixa de legendas
     cta = config.get("cta", {}) or {}
     cta_text = (cta.get("text") or "").strip()
     cta_start = float(cta.get("start", 0.0) or 0.0)
     cta_end = float(cta.get("end", 0.0) or 0.0)
     if cta_text and cta_end > cta_start:
-        # CTA acima da faixa de legendas (que fica no rodapé) para não colidir.
         (work_dir / "cta.txt").write_text(_wrap(cta_text, 58), encoding="utf-8")
         filters.append(_drawtext(work_dir / "cta.txt", CORAL, "h*0.58",
                                  f"between(t,{cta_start:.3f},{cta_end:.3f})", 58, font))
+    return filters
 
-    # --- 5) audio: amix narração + música(loop) + SFX(adelay) --- #
-    progress_cb(85.0, "Mixando áudio (narração + música + SFX)")
-    uploads = work_dir.parent / "uploads"
-    inputs: List[str] = ["-i", ff_path(silent_video)]        # 0:v
-    input_idx = 1
-    amix_labels: List[str] = []
+
+def _run_audio_mix(config: dict, work_dir: Path, total_duration: float,
+                   mix_path: Path, log_path: Path) -> bool:
+    """Mixa SOMENTE o áudio (narração + música loop + SFX) -> mix.m4a.
+
+    Passo separado do vídeo (item 1) e com ``-threads 1`` para derrubar o pico
+    de RAM (era aqui o OOM no free tier de 512MB). Retorna True se há áudio.
+    """
+    audio_file = (config.get("audio", {}) or {}).get("file")
+    inputs: List[str] = []
+    idx = 0
+    labels: List[str] = []
     afilters: List[str] = []
 
-    # narration
-    have_audio = bool(audio_file) and (uploads / Path(audio_file).name).exists()
-    if have_audio:
-        inputs += ["-i", ff_path(uploads / Path(audio_file).name)]
-        afilters.append(f"[{input_idx}:a]volume=1.0[narr]")
-        amix_labels.append("[narr]")
-        input_idx += 1
+    # narração
+    narr_path = _resolve_image(work_dir, audio_file) if audio_file else None
+    if narr_path:
+        inputs += ["-i", narr_path]
+        afilters.append(f"[{idx}:a]volume=1.0[narr]")
+        labels.append("[narr]")
+        idx += 1
 
-    # music (looped) — -stream_loop before its -i
+    # música em loop (-stream_loop antes do -i)
     music = config.get("music", {}) or {}
-    music_file = music.get("file")
-    music_vol = float(music.get("volume", 0.2) or 0.2)
-    if music_file:
-        mpath = _resolve_asset(work_dir, music_file, "music")
+    if music.get("file"):
+        mpath = _resolve_asset(work_dir, music["file"], "music")
         if mpath is not None:
+            vol = float(music.get("volume", 0.2) or 0.2)
             inputs += ["-stream_loop", "-1", "-i", ff_path(mpath)]
-            afilters.append(f"[{input_idx}:a]volume={music_vol}[mus]")
-            amix_labels.append("[mus]")
-            input_idx += 1
+            afilters.append(f"[{idx}:a]volume={vol}[mus]")
+            labels.append("[mus]")
+            idx += 1
 
     # SFX (adelay)
     for j, sfx in enumerate(config.get("sfx", []) or []):
@@ -441,45 +429,143 @@ def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb) -> str:
         ms = int(float(sfx.get("time", 0.0) or 0.0) * 1000)
         vol = float(sfx.get("volume", 1.0) or 1.0)
         inputs += ["-i", ff_path(spath)]
-        afilters.append(f"[{input_idx}:a]adelay={ms}|{ms},volume={vol}[sfx{j}]")
-        amix_labels.append(f"[sfx{j}]")
-        input_idx += 1
+        afilters.append(f"[{idx}:a]adelay={ms}|{ms},volume={vol}[sfx{j}]")
+        labels.append(f"[sfx{j}]")
+        idx += 1
 
-    # assemble filter_complex
-    fc_parts: List[str] = []
-    if filters:
-        fc_parts.append("[0:v]" + ",".join(filters) + "[v]")
-        vmap = "[v]"
+    if not labels:
+        return False  # sem áudio nenhum
+
+    fc = list(afilters)
+    if len(labels) == 1:
+        fc.append(f"{labels[0]}apad,atrim=0:{total_duration:.3f}[aout]")
     else:
-        vmap = "0:v"
-    have_mixed_audio = len(amix_labels) > 0
-    if have_mixed_audio:
-        fc_parts.extend(afilters)
-        if len(amix_labels) == 1:
-            fc_parts.append(f"{amix_labels[0]}apad,atrim=0:{total_duration:.3f}[aout]")
-        else:
-            # amix reconciliado com o original: duration=first (dura o tempo da
-            # narração, que é o 1º input) + normalize=0 (preserva níveis).
-            fc_parts.append(
-                "".join(amix_labels)
-                + f"amix=inputs={len(amix_labels)}:duration=first:normalize=0,"
-                + f"atrim=0:{total_duration:.3f}[aout]"
-            )
+        # amix reconciliado: duration=first (dura o tempo da narração) + normalize=0.
+        fc.append(
+            "".join(labels)
+            + f"amix=inputs={len(labels)}:duration=first:normalize=0,"
+            + f"atrim=0:{total_duration:.3f}[aout]"
+        )
 
-    out_path = work_dir / "short.mp4"
-    cmd = ["ffmpeg", "-y", *inputs]
-    if fc_parts:
-        cmd += ["-filter_complex", ";".join(fc_parts)]
-    cmd += ["-map", vmap]
-    if have_mixed_audio:
-        cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", "192k"]
-    cmd += [
-        "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
-        "-r", str(FPS),
-        "-t", f"{total_duration:.3f}",       # explícito, NUNCA -shortest
-        "-movflags", "+faststart",
-        ff_path(out_path),
+    cmd = [
+        "ffmpeg", "-y", "-threads", "1", *inputs,
+        "-filter_complex", ";".join(fc),
+        "-map", "[aout]", "-c:a", "aac", "-b:a", "192k",
+        "-t", f"{total_duration:.3f}",
+        ff_path(mix_path),
     ]
+    run_ffmpeg(cmd, log_path)
+    return True
+
+
+# --------------------------------------------------------------------------- #
+# The engine (pure) — passos separados p/ pouca RAM + resumíveis (checkpoints)
+# --------------------------------------------------------------------------- #
+def render(config: dict, work_dir: Path, progress_cb: ProgressMsgCb,
+           resume: bool = False) -> str:
+    """Assemble a 1080x1920 short from ``config`` and return the mp4 path.
+
+    Pipeline em etapas, cada uma com saída em arquivo = checkpoint. Se
+    ``resume=True``, pula etapas cuja saída já existe (retoma após um restart
+    da instância). Vídeo e áudio são renderizados SEPARADOS e depois muxados
+    sem re-encode (-c copy) para não estourar a RAM.
+    """
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    log_path = work_dir / "ffmpeg.log"
+    if not resume:
+        log_path.write_bytes(b"")
+    clips_dir = work_dir / "clips"
+    clips_dir.mkdir(exist_ok=True)
+
+    images = config.get("images", []) or []
+    audio = config.get("audio", {}) or {}
+    audio_file = audio.get("file")
+    total_duration = float(audio.get("duration", 0.0) or 0.0)
+    if total_duration <= 0:
+        total_duration = sum(_clip_durations(images, len(images) * 3.0))
+
+    # --- 0) PRE-FLIGHT: valida assets ANTES de renderizar (item 2) --- #
+    progress_cb(1.0, "Validando assets")
+    problems = validate_assets(config, work_dir)
+    if problems:
+        raise RuntimeError("Assets ausentes ou ilegíveis:\n- " + "\n- ".join(problems))
+
+    for w in check_image_durations(images, total_duration):
+        with log_path.open("ab") as lg:
+            lg.write((w + "\n").encode("utf-8", "replace"))
+    for w in check_audio_name(audio_file, str(config.get("_project_name", ""))):
+        with log_path.open("ab") as lg:
+            lg.write((w + "\n").encode("utf-8", "replace"))
+
+    # --- 1) cenas: 1 clipe por imagem (resumível: pula clipe já pronto) --- #
+    durations = _clip_durations(images, total_duration)
+    clip_paths: List[Path] = []
+    for i, img in enumerate(images):
+        clip_path = clips_dir / f"clip_{i:03d}.mp4"
+        progress_cb(5.0 + 45.0 * i / max(1, len(images)),
+                    f"Renderizando cena {i + 1}/{len(images)}")
+        if not (resume and clip_path.exists()):
+            effect = img.get("effect") or ("zoom-in" if i % 2 == 0 else "zoom-out")
+            img_path = _resolve_image(work_dir, str(img["file"]))
+            if img_path is None:
+                raise RuntimeError(f"Imagem não encontrada: {img.get('file')}")
+            _render_clip(img_path, durations[i], effect, clip_path, log_path)
+        clip_paths.append(clip_path)
+
+    # --- 2) concat (-f concat -safe 0), NUNCA -shortest (checkpoint) --- #
+    silent_video = work_dir / "video_silent.mp4"
+    if not (resume and silent_video.exists()):
+        progress_cb(55.0, "Concatenando cenas (punch)")
+        concat_list = work_dir / "concat.txt"
+        concat_list.write_text(
+            "".join(f"file '{ff_path(p)}'\n" for p in clip_paths), encoding="utf-8"
+        )
+        run_ffmpeg(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", ff_path(concat_list),
+             "-c", "copy", ff_path(silent_video)],
+            log_path,
+        )
+
+    # --- 3) VÍDEO: aplica legendas/hook/CTA num passo só, SEM áudio (checkpoint) --- #
+    filters = _build_video_filters(config, work_dir)
+    video_base = silent_video
+    if filters:
+        video_final = work_dir / "video_final.mp4"
+        if not (resume and video_final.exists()):
+            progress_cb(65.0, "Aplicando legendas, hook e CTA")
+            # -threads 1 + rc-lookahead baixo derrubam o pico de RAM do encode
+            # (619MB -> ~290MB) sem perda visível de qualidade no crf 19.
+            run_ffmpeg(
+                ["ffmpeg", "-y", "-i", ff_path(silent_video),
+                 "-vf", ",".join(filters), "-an",
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+                 "-threads", "1", "-x264-params", "rc-lookahead=10:sync-lookahead=0",
+                 "-pix_fmt", "yuv420p", "-r", str(FPS),
+                 "-t", f"{total_duration:.3f}",
+                 "-movflags", "+faststart", ff_path(video_final)],
+                log_path,
+            )
+        video_base = video_final
+
+    # --- 4) ÁUDIO: mix leve em memória -> mix.m4a (-threads 1) (checkpoint) --- #
+    mix_path = work_dir / "mix.m4a"
+    if resume and mix_path.exists():
+        have_audio = True
+    else:
+        progress_cb(82.0, "Mixando áudio (narração + música + SFX)")
+        have_audio = _run_audio_mix(config, work_dir, total_duration, mix_path, log_path)
+
+    # --- 5) MUX: junta vídeo + áudio SEM re-encode (-c copy) --- #
+    progress_cb(95.0, "Finalizando (mux sem re-encode)")
+    out_path = work_dir / "short.mp4"
+    cmd = ["ffmpeg", "-y", "-i", ff_path(video_base)]
+    if have_audio:
+        cmd += ["-i", ff_path(mix_path)]
+    cmd += ["-map", "0:v:0", "-c:v", "copy"]
+    if have_audio:
+        cmd += ["-map", "1:a:0", "-c:a", "copy"]
+    cmd += ["-t", f"{total_duration:.3f}", "-movflags", "+faststart", ff_path(out_path)]
     run_ffmpeg(cmd, log_path)
 
     progress_cb(100.0, "Concluído")

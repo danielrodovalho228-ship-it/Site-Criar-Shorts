@@ -3,6 +3,14 @@
 O app é **uma imagem Docker única**: o backend (FastAPI + ffmpeg) serve o
 frontend já buildado **e** a API na mesma URL. Ou seja: 1 serviço → 1 link.
 
+> ⚠️ **Render free = DEMO.** O plano grátis tem **512 MB de RAM**. O render foi
+> otimizado para caber nisso (pico de ~295 MB no ffmpeg, medido no Short 1 de
+> 47,7s — vídeo e áudio renderizados em passos separados, `-threads` limitado).
+> Ainda assim, **para produção use uma instância com ≥ 2 GB** (ou um worker
+> separado para o render): mais RAM = encode mais rápido, sem risco de restart.
+> Se a instância reiniciar no meio, o app **retoma do último checkpoint**
+> (botão "Retomar render") — nada é perdido.
+
 > Por que não Vercel/Netlify? Porque o app **renderiza vídeo com ffmpeg** (roda
 > por minutos, grava arquivos). Isso precisa de um host que rode **Docker**, não
 > de hospedagem serverless de site estático.

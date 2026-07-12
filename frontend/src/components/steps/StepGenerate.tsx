@@ -5,7 +5,9 @@ export function StepGenerate() {
   const project = useStore((s) => s.project)!
   const job = useStore((s) => s.job)
   const busy = useStore((s) => s.busy)
+  const interrupted = useStore((s) => s.interrupted)
   const generate = useStore((s) => s.generate)
+  const resume = useStore((s) => s.resume)
   const duplicate = useStore((s) => s.duplicate)
   const setStep = useStore((s) => s.setStep)
 
@@ -15,7 +17,7 @@ export function StepGenerate() {
 
   return (
     <section className="flex flex-col items-center gap-6">
-      {!done && (
+      {!done && !interrupted && (
         <button
           disabled={busy || rendering}
           onClick={generate}
@@ -23,6 +25,22 @@ export function StepGenerate() {
         >
           {rendering ? 'Renderizando…' : '🎬 Gerar Short'}
         </button>
+      )}
+
+      {interrupted && !done && (
+        <div className="card-sticker flex max-w-md flex-col items-center gap-3 bg-mustard/20 p-5 text-center">
+          <p className="text-sm font-bold text-navy">
+            ⚠️ O servidor não respondeu — a instância pode ter reiniciado durante
+            o render. As etapas já concluídas foram salvas.
+          </p>
+          <button
+            onClick={resume}
+            disabled={busy}
+            className="btn-sticker bg-navy px-8 py-3 font-black text-white active:btn-sticker-active disabled:opacity-50"
+          >
+            ↻ Retomar render
+          </button>
+        </div>
       )}
 
       {(rendering || busy) && (

@@ -34,8 +34,8 @@ from models import (
     ProjectStatus,
 )
 from models import JobStatus
-from render import render
-from storage import get_storage
+from render import render, validate_assets
+from storage import get_storage, shutil
 from templates_loader import list_templates, load_template, template_config
 
 app = FastAPI(title="Short Factory API", version="1.0.0")
@@ -203,8 +203,12 @@ async def upload_assets(
 # --------------------------------------------------------------------------- #
 # Generate (render) + jobs
 # --------------------------------------------------------------------------- #
-def _run_render(project_id: str, job_id: str) -> None:
-    """Background worker: run the pure engine, mirror progress to job+project."""
+def _run_render(project_id: str, job_id: str, resume: bool = False) -> None:
+    """Background worker: run the pure engine, mirror progress to job+project.
+
+    ``resume=True`` reaproveita os checkpoints em disco (retoma após restart);
+    ``resume=False`` limpa a saída anterior para um render limpo.
+    """
     project = storage.load_project(project_id)
     if project is None:
         registry.update(job_id, status=JobStatus.FAILED, error="Projeto sumiu")
@@ -216,14 +220,19 @@ def _run_render(project_id: str, job_id: str) -> None:
         project.status = ProjectStatus.RENDERING
         storage.save_project(project)
 
-    registry.update(job_id, status=JobStatus.RUNNING, progress=0.0, message="Iniciando")
+    registry.update(job_id, status=JobStatus.RUNNING, progress=0.0,
+                    message="Retomando" if resume else "Iniciando")
     project.status = ProjectStatus.RENDERING
     project.error = None
     storage.save_project(project)
 
     try:
         output_dir = storage.output_dir(project_id)
-        out_path = render(project.config.model_dump(), output_dir, progress_cb)
+        if not resume:
+            # render limpo: descarta checkpoints antigos (evita reusar config velha)
+            shutil.rmtree(output_dir, ignore_errors=True)
+            output_dir = storage.output_dir(project_id)
+        out_path = render(project.config.model_dump(), output_dir, progress_cb, resume=resume)
         rel = Path(out_path).name
         project.output_file = rel
         project.status = ProjectStatus.DONE
@@ -251,11 +260,34 @@ def generate(project_id: str, background_tasks: BackgroundTasks) -> Job:
     if not project.config.audio.file:
         raise HTTPException(status_code=400, detail="Adicione a narração (áudio)")
 
+    # pré-voo: assets ausentes -> erro claro AGORA (não trava aos 85%)
+    problems = validate_assets(project.config.model_dump(), storage.output_dir(project_id))
+    if problems:
+        raise HTTPException(status_code=400, detail="Assets faltando: " + "; ".join(problems))
+
     job = registry.create(project_id)
     project.status = ProjectStatus.QUEUED
     project.progress = 0.0
     storage.save_project(project)
-    background_tasks.add_task(_run_render, project_id, job.id)
+    background_tasks.add_task(_run_render, project_id, job.id, False)
+    return job
+
+
+@app.post("/api/projects/{project_id}/resume", response_model=Job)
+def resume(project_id: str, background_tasks: BackgroundTasks) -> Job:
+    """Retoma um render do último checkpoint (após restart da instância).
+
+    Baseado no projeto (jobs são em memória e somem no restart). Reaproveita
+    cenas/concat/vídeo/mix já prontos em disco.
+    """
+    project = _require_project(project_id)
+    if not project.config.images or not project.config.audio.file:
+        raise HTTPException(status_code=400, detail="Projeto incompleto para retomar")
+
+    job = registry.create(project_id)
+    project.status = ProjectStatus.QUEUED
+    storage.save_project(project)
+    background_tasks.add_task(_run_render, project_id, job.id, True)
     return job
 
 
