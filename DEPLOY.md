@@ -11,10 +11,20 @@ frontend já buildado **e** a API na mesma URL. Ou seja: 1 serviço → 1 link.
 
 ## Opção A — Render (recomendado, tem plano grátis) 🟢
 
+### Jeito mais rápido: botão de deploy
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/danielrodovalho228-ship-it/Site-Criar-Shorts/tree/claude/shorts-creation-site-1hgmiy)
+
+Clique no botão → logue com o GitHub → **Apply**. O Render lê o `render.yaml`,
+builda o `Dockerfile` (~5-10 min na 1ª vez) e te dá uma URL pública.
+
+### Ou manualmente
+
 1. Crie conta em **https://render.com** (pode logar com o GitHub).
 2. **New +** → **Blueprint**.
-3. Conecte este repositório. O Render lê o `render.yaml` e a `Dockerfile`
-   sozinho.
+3. Conecte este repositório e selecione a branch
+   `claude/shorts-creation-site-1hgmiy`. O Render lê o `render.yaml` e a
+   `Dockerfile` sozinho.
 4. Clique **Apply**. Ele builda (5-10 min na 1ª vez) e te dá uma URL tipo
    `https://short-factory.onrender.com`.
 5. Abra a URL → é o site. Use o preset ⭐ **The Chapter — Short 1**, suba os
