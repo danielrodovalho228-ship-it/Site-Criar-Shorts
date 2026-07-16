@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.log
+**/*.tsbuildinfo
+storage/projects
+frontend/vite.config.js
+frontend/vite.config.d.ts

@@ -1,0 +1,30 @@
+# Render Blueprint — deploy "quase 1 clique".
+# No Render: New + -> Blueprint -> conecta este repo -> Apply.
+# Ele lê este arquivo, builda o Dockerfile e te dá uma URL pública.
+services:
+  - type: web
+    name: short-factory
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    branch: claude/shorts-creation-site-1hgmiy
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Qualidade do encode final. 'fast' (veryfast, default) p/ free tier;
+      # 'high' (medium, arquivo menor) só vale a pena em instância mais rápida.
+      - key: RENDER_QUALITY
+        value: fast
+      # Chave da ElevenLabs (auto-legendas). SECRETO: sync:false = NÃO vem do
+      # repo; defina o valor no painel do Render (Environment).
+      - key: ELEVENLABS_API_KEY
+        sync: false
+    # Disco persistente (uploads/renders sobrevivem a restart/deploy).
+    # ATENCAO: disco NAO e suportado no plano free -- exige plano pago
+    # (Starter+). Custo do disco no Render: ~US$0.25/GB/mes (1GB ~ US$0.25).
+    # No plano pago, troque "plan: free" acima por "plan: starter" e
+    # descomente:
+    # disk:
+    #   name: storage
+    #   mountPath: /app/storage
+    #   sizeGB: 1

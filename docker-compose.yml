@@ -1,0 +1,14 @@
+# Rodar localmente ou num VPS com Docker:
+#   docker compose up --build
+# Depois abra http://localhost:8000
+services:
+  app:
+    build: .
+    ports:
+      - '8000:8000'
+    environment:
+      - PORT=8000
+    volumes:
+      # persiste uploads/renders/biblioteca entre reinícios
+      - ./storage:/app/storage
+    restart: unless-stopped

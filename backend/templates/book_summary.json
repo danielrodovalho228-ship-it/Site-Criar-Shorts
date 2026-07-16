@@ -1,0 +1,32 @@
+{
+  "id": "book_summary",
+  "name": "📚 Book Summary",
+  "description": "Estilo The Chapter: resumo de livro com hook numérico, cortes 2,5-4s e legendas navy/white.",
+  "niche": "Educacional",
+  "recipe": "Hook com número no frame 0, cortes 2,5-4s, zoom alternado, cash register em números, CTA 'full breakdown' aos ~80%, loop no final.",
+  "cut_range": [2.5, 4.0],
+  "config": {
+    "hook": {
+      "text": "",
+      "duration": 2.5
+    },
+    "cta": {
+      "text": "full breakdown on The Chapter Books",
+      "start": 0.0,
+      "end": 0.0
+    },
+    "music": {
+      "file": null,
+      "volume": 0.18
+    },
+    "caption_style": "navy-white",
+    "images": [],
+    "sfx": [],
+    "caption_fixes": {}
+  },
+  "suggested_sfx": [
+    { "trigger": "number", "file": "cash_register.mp3", "note": "Toca ao aparecer um número no frame." },
+    { "trigger": "scene_change", "file": "whoosh_1.mp3", "note": "Vira de cena (punch)." },
+    { "trigger": "cta", "file": "shimmer.mp3", "note": "Realce no CTA." }
+  ]
+}
