@@ -42,6 +42,8 @@ interface State {
   autoTimingByName: () => void
   distributeEvenly: () => void
   setCaptionStyle: (s: CaptionStyle) => void
+  transcribe: () => Promise<void>
+  autotimeNarration: () => Promise<void>
   saveConfig: () => Promise<void>
 
   generate: () => Promise<void>
@@ -241,6 +243,40 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setCaptionStyle: (style) => get().patchConfig((c) => void (c.caption_style = style)),
+
+  transcribe: async () => {
+    const { project } = get()
+    if (!project) return
+    set({ busy: true })
+    try {
+      const r = await api.transcribe(project.id)
+      const p = await api.getProject(project.id)
+      set({ project: p })
+      get().toast(
+        'success',
+        `Legendas geradas: ${r.cue_count} trechos, ${r.pause_count} pausas detectadas.`,
+      )
+    } catch (e) {
+      get().toast('error', `Falha ao transcrever: ${(e as Error).message}`)
+    } finally {
+      set({ busy: false })
+    }
+  },
+
+  autotimeNarration: async () => {
+    const { project } = get()
+    if (!project) return
+    set({ busy: true })
+    try {
+      const p = await api.autotime(project.id)
+      set({ project: p })
+      get().toast('success', 'Cenas distribuídas nas pausas da narração.')
+    } catch (e) {
+      get().toast('error', `Auto-timing pela narração: ${(e as Error).message}`)
+    } finally {
+      set({ busy: false })
+    }
+  },
 
   saveConfig: async () => {
     const { project } = get()

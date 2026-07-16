@@ -63,6 +63,14 @@ export const api = {
   resume: (id: string) =>
     fetch(`${BASE}/projects/${id}/resume`, { method: 'POST' }).then(j<Job>),
 
+  transcribe: (id: string) =>
+    fetch(`${BASE}/projects/${id}/transcribe`, { method: 'POST' }).then(
+      j<{ srt: string; cue_count: number; word_count: number; pause_count: number; preview: string[] }>,
+    ),
+
+  autotime: (id: string) =>
+    fetch(`${BASE}/projects/${id}/autotime`, { method: 'POST' }).then(j<Project>),
+
   getJob: (jobId: string) => fetch(`${BASE}/jobs/${jobId}`).then(j<Job>),
 
   listSfx: () => fetch(`${BASE}/assets/sfx`).then(j<AssetInfo[]>),

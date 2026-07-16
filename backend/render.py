@@ -492,15 +492,17 @@ def _run_audio_mix(config: dict, work_dir: Path, total_duration: float,
     if not labels:
         return False  # sem áudio nenhum
 
+    # loudnorm p/ o padrão social (-14 LUFS, -1 dBTP) — aprendido do video-use.
+    ln = "loudnorm=I=-14:TP=-1:LRA=11"
     fc = list(afilters)
     if len(labels) == 1:
-        fc.append(f"{labels[0]}apad,atrim=0:{total_duration:.3f}[aout]")
+        fc.append(f"{labels[0]}apad,atrim=0:{total_duration:.3f},{ln}[aout]")
     else:
         # amix reconciliado: duration=first (dura o tempo da narração) + normalize=0.
         fc.append(
             "".join(labels)
             + f"amix=inputs={len(labels)}:duration=first:normalize=0,"
-            + f"atrim=0:{total_duration:.3f}[aout]"
+            + f"atrim=0:{total_duration:.3f},{ln}[aout]"
         )
 
     cmd = [

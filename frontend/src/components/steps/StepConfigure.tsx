@@ -119,6 +119,8 @@ export function StepConfigure() {
   const setImages = useStore((s) => s.setImages)
   const autoTimingByName = useStore((s) => s.autoTimingByName)
   const distributeEvenly = useStore((s) => s.distributeEvenly)
+  const autotimeNarration = useStore((s) => s.autotimeNarration)
+  const busy = useStore((s) => s.busy)
   const setStep = useStore((s) => s.setStep)
   const saveConfig = useStore((s) => s.saveConfig)
   const cfg = project.config
@@ -159,6 +161,14 @@ export function StepConfigure() {
               className="btn-sticker bg-teal px-3 py-1.5 text-xs font-bold text-white active:btn-sticker-active"
             >
               Distribuir
+            </button>
+            <button
+              onClick={autotimeNarration}
+              disabled={busy}
+              title="Distribui as cenas nas pausas da narração (precisa transcrever antes)"
+              className="btn-sticker bg-coral px-3 py-1.5 text-xs font-bold text-white active:btn-sticker-active disabled:opacity-50"
+            >
+              ✨ Auto-timing (narração)
             </button>
           </div>
         </div>

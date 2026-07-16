@@ -45,6 +45,7 @@ export function StepUpload() {
   const preset = useStore((s) => s.preset)
   const applyPresetLayout = useStore((s) => s.applyPresetLayout)
   const uploadFiles = useStore((s) => s.uploadFiles)
+  const transcribe = useStore((s) => s.transcribe)
   const patchConfig = useStore((s) => s.patchConfig)
   const setStep = useStore((s) => s.setStep)
   const saveConfig = useStore((s) => s.saveConfig)
@@ -248,7 +249,7 @@ export function StepUpload() {
             <p className="text-sm font-medium text-coral">Nenhum áudio enviado.</p>
           )}
         </div>
-        <div className="card-sticker p-4">
+        <div className="card-sticker flex flex-col p-4">
           <h3 className="mb-2 font-black text-navy">📝 Legendas</h3>
           {cfg.srt ? (
             <>
@@ -262,7 +263,19 @@ export function StepUpload() {
               </ul>
             </>
           ) : (
-            <p className="text-sm font-medium text-navy/40">Opcional — sem SRT.</p>
+            <p className="text-sm font-medium text-navy/40">
+              Sem SRT — envie o arquivo ou gere automático da narração.
+            </p>
+          )}
+          {cfg.audio.file && (
+            <button
+              disabled={busy}
+              onClick={transcribe}
+              title="Transcreve a narração e cria as legendas (ElevenLabs)"
+              className="btn-sticker mt-3 self-start bg-teal px-3 py-1.5 text-xs font-bold text-white active:btn-sticker-active disabled:opacity-50"
+            >
+              ✨ {busy ? 'Transcrevendo…' : 'Gerar legendas (auto)'}
+            </button>
           )}
         </div>
       </div>

@@ -101,6 +101,22 @@ Não dá URL pública, mas roda 100% local e rápido — é o recomendado para o
 
 ---
 
+## Legendas automáticas (ElevenLabs Scribe) 🎙️→📝
+
+O botão **"✨ Gerar legendas (auto)"** transcreve a narração e cria o SRT
+sozinho (+ detecta as pausas p/ o "Auto-timing pela narração"). Precisa de uma
+chave da ElevenLabs, definida como **variável de ambiente secreta** (nunca no
+código):
+
+- **Render:** Dashboard do serviço → **Environment** → adicione
+  `ELEVENLABS_API_KEY` = *sua chave* → Save (o serviço reinicia).
+- **Local (Windows):** antes de rodar o `start_backend.bat`, no mesmo terminal:
+  `set ELEVENLABS_API_KEY=sua_chave` — ou defina nas variáveis de ambiente do
+  Windows.
+
+Sem a chave, o app funciona normalmente; só o botão de auto-legenda retorna um
+aviso claro pedindo a chave.
+
 ## Biblioteca de sons no deploy
 
 Os SFX/músicas ficam em `storage/assets/{sfx,music}/` e **não vão no Git**

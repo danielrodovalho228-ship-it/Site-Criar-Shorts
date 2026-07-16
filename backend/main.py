@@ -351,6 +351,72 @@ def list_music() -> List[AssetInfo]:
 
 
 # --------------------------------------------------------------------------- #
+# Auto-transcrição (ElevenLabs Scribe): legendas automáticas + auto-timing
+# --------------------------------------------------------------------------- #
+@app.post("/api/projects/{project_id}/transcribe", response_model=dict)
+def transcribe_project(project_id: str) -> dict:
+    """Transcreve a narração -> gera SRT automático e salva as pausas."""
+    import transcribe as tr
+
+    project = _require_project(project_id)
+    audio_file = project.config.audio.file
+    if not audio_file:
+        raise HTTPException(status_code=400, detail="Envie a narração (áudio) primeiro")
+    audio_path = storage.uploads_dir(project_id) / Path(audio_file).name
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Áudio não encontrado")
+
+    try:
+        payload = tr.transcribe_audio(audio_path)
+    except tr.TranscriptionError as exc:
+        # 400 se for config (sem chave); 502 se for erro do provedor
+        code = 400 if "ELEVENLABS_API_KEY" in str(exc) else 502
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+    words = tr._words_only(payload)
+    if not words:
+        raise HTTPException(status_code=422, detail="Nenhuma palavra reconhecida no áudio")
+    cues = tr.words_to_cues(words)
+    srt_text = tr.cues_to_srt(cues)
+    pauses = tr.compute_pauses(words)
+
+    uploads = storage.uploads_dir(project_id)
+    (uploads / "auto_captions.srt").write_text(srt_text, encoding="utf-8")
+    tr.save_transcript(uploads, words, pauses)
+
+    project.config.srt = "auto_captions.srt"
+    storage.save_project(project)
+
+    return {
+        "srt": "auto_captions.srt",
+        "cue_count": len(cues),
+        "word_count": len(words),
+        "pause_count": len(pauses),
+        "preview": [c["text"] for c in cues[:3]],
+    }
+
+
+@app.post("/api/projects/{project_id}/autotime", response_model=Project)
+def autotime_project(project_id: str) -> Project:
+    """Distribui as cenas nas pausas da narração (precisa transcrever antes)."""
+    import transcribe as tr
+
+    project = _require_project(project_id)
+    pauses = tr.load_pauses(storage.uploads_dir(project_id))
+    if pauses is None:
+        raise HTTPException(status_code=400, detail="Transcreva a narração primeiro")
+    n = len(project.config.images)
+    if n == 0:
+        raise HTTPException(status_code=400, detail="Adicione imagens primeiro")
+    total = project.config.audio.duration or 0.0
+    starts = tr.distribute_starts(pauses, total, n)
+    for img, start in zip(project.config.images, starts):
+        img.start = start
+    storage.save_project(project)
+    return project
+
+
+# --------------------------------------------------------------------------- #
 # Serve the built frontend (produção: uma URL só serve site + API).
 # Em dev, o Vite roda separado (:5173) e este mount nem existe (sem dist).
 # Registrado por ÚLTIMO para não sombrear as rotas /api/*.

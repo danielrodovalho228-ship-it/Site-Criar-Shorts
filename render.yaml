@@ -15,6 +15,10 @@ services:
       # 'high' (medium, arquivo menor) só vale a pena em instância mais rápida.
       - key: RENDER_QUALITY
         value: fast
+      # Chave da ElevenLabs (auto-legendas). SECRETO: sync:false = NÃO vem do
+      # repo; defina o valor no painel do Render (Environment).
+      - key: ELEVENLABS_API_KEY
+        sync: false
     # Disco persistente (uploads/renders sobrevivem a restart/deploy).
     # ATENCAO: disco NAO e suportado no plano free -- exige plano pago
     # (Starter+). Custo do disco no Render: ~US$0.25/GB/mes (1GB ~ US$0.25).
